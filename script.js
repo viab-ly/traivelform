@@ -19,20 +19,17 @@ document.addEventListener('DOMContentLoaded', function() {
         // Convert data to ASCII-safe JSON string (non-ASCII chars escaped as \uXXXX)
         const jsonString = escapeNonAscii(JSON.stringify(data));
 
-        // Create QR code with maximum capacity and UTF-8 support
+        // Create QR code optimized for screen and print scanning
         const qrcode = kjua({
             text: jsonString,
             size: 400,
-            mode: 'byte',
             render: 'canvas',
             crisp: true,
             minVersion: 1,
-            maxVersion: 40,
-            ecLevel: 'L',
+            ecLevel: 'Q',
             back: '#ffffff',
             fill: '#000000',
-            quiet: 2,
-            ratio: 1
+            quiet: 4,
         });
 
         container.appendChild(qrcode);
