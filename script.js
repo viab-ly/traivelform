@@ -2,22 +2,50 @@ document.addEventListener('DOMContentLoaded', function() {
     const generateQRButton = document.getElementById('generateQR');
     const createPDFButton = document.getElementById('createPDF');
 
-    // Escape all non-ASCII characters to \uXXXX sequences so the QR code
-    // contains only ASCII bytes. This avoids UTF-8 vs ISO-8859-1 misinterpretation
-    // by barcode scanners that follow the QR spec default (ISO-8859-1 for byte mode).
-    // JSON.parse() on the receiving end automatically decodes \uXXXX back to Unicode.
-    function escapeNonAscii(str) {
-        return str.replace(/[^\x20-\x7E]/g, function(ch) {
-            return '\\u' + ('0000' + ch.charCodeAt(0).toString(16)).slice(-4);
-        });
+    // Encode a string as Base64 with correct UTF-8 handling.
+    // Base64 uses only A-Z, a-z, 0-9, +, /, = -no AltGr-dependent characters,
+    // which makes it far more reliable for HID barcode scanners on QWERTZ keyboards.
+    function utf8ToBase64(str) {
+        const bytes = new TextEncoder().encode(str);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
+
+    // Replace German umlauts and ß with ASCII equivalents.
+    // HID scanners cannot type multi-byte UTF-8 characters -they interpret
+    // each byte separately through the keyboard layout, producing garbled output
+    // (e.g. ue becomes garbled, ss gets dropped). Standard German transliteration avoids this.
+    function transliterateGerman(str) {
+        return str
+            .replace(/ä/g, 'ae').replace(/Ä/g, 'Ae')
+            .replace(/ö/g, 'oe').replace(/Ö/g, 'Oe')
+            .replace(/ü/g, 'ue').replace(/Ü/g, 'Ue')
+            .replace(/ß/g, 'ss');
+    }
+
+    // Read QR format from the toggle dropdown
+    function getQrFormat() {
+        const select = document.getElementById('qrFormat');
+        return select ? select.value : 'base64';
     }
 
     function createQRCode(elementId, data) {
         const container = document.getElementById(elementId);
         container.innerHTML = ''; // Clear previous QR code
 
-        // Convert data to ASCII-safe JSON string (non-ASCII chars escaped as \uXXXX)
-        const jsonString = escapeNonAscii(JSON.stringify(data));
+        const format = getQrFormat();
+        let jsonString;
+
+        if (format === 'base64') {
+            // W4: Base64-encoded JSON -scanner-safe, no AltGr chars
+            jsonString = utf8ToBase64(JSON.stringify(data));
+        } else {
+            // W3-fix: Plain JSON -compatible with old app, no escapeNonAscii
+            jsonString = JSON.stringify(data);
+        }
 
         // Create QR code optimized for screen and print scanning
         const qrcode = kjua({
@@ -36,43 +64,61 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     generateQRButton.addEventListener('click', function() {
+        const format = getQrFormat();
+
+        // Duration value: in W3-fix mode, strip parentheses to avoid Shift-timing
+        // issues on QWERTZ scanners. parseDuration() in the app matches on the
+        // prefix (Tag|Woche|Monat|Jahr) so "Tage" works just as well as "Tag(e)".
+        let durationUnit = document.getElementById('reisedauer_unit').value;
+        if (format === 'w3fix') {
+            durationUnit = durationUnit
+                .replace('Tag(e)', 'Tage')
+                .replace('Woche(n)', 'Wochen')
+                .replace('Monat(e)', 'Monate')
+                .replace('Jahr(e)', 'Jahre');
+        }
+
+        // In W3-fix mode, transliterate all string values to pure ASCII
+        const t = format === 'w3fix' ? transliterateGerman : function(s) { return s; };
+
         // Collect personal data
         const personalData = {
-            fn: document.getElementById('vorname').value,
-            ln: document.getElementById('name').value,
+            fn: t(document.getElementById('vorname').value),
+            ln: t(document.getElementById('name').value),
             bd: document.getElementById('geb').value,
-            st: document.getElementById('strasse').value,
+            st: t(document.getElementById('strasse').value),
             pc: document.getElementById('plz').value,
-            ct: document.getElementById('ort').value,
-            ds1: document.getElementById('reiseland1').value,
-            ds2: document.getElementById('reiseland2').value,
-            ds3: document.getElementById('reiseland3').value,
-            ds4: document.getElementById('reiseland4').value,
-            ds5: document.getElementById('reiseland5').value,
-            ds6: document.getElementById('reiseland6').value,
+            ct: t(document.getElementById('ort').value),
+            ds1: t(document.getElementById('reiseland1').value),
+            ds2: t(document.getElementById('reiseland2').value),
+            ds3: t(document.getElementById('reiseland3').value),
+            ds4: t(document.getElementById('reiseland4').value),
+            ds5: t(document.getElementById('reiseland5').value),
+            ds6: t(document.getElementById('reiseland6').value),
             mc: document.getElementById('more_countries').checked,
             dd: document.getElementById('abreisetermin').value.split('-').reverse().join('.'),
-            dr: document.getElementById('reisedauer_number').value + ' ' + document.getElementById('reisedauer_unit').value,
-            em: document.getElementById('email').value,
+            dr: document.getElementById('reisedauer_number').value + ' ' + durationUnit,
+            // In W3-fix mode, skip email to avoid @ (AltGr+Q) corrupting surrounding quotes
+            em: format === 'w3fix' ? '' : document.getElementById('email').value,
             ph: document.getElementById('telefon').value,
             rs: document.getElementById('reisestil').value
         };
 
-        // Collect medical data
+        // Collect medical data (detail fields can contain free text with umlauts)
         const medicalData = {
             q1: document.querySelector('input[name="q1"]:checked')?.value || '',
-            q1d: document.getElementById('q1_detail').value,
+            q1d: t(document.getElementById('q1_detail').value),
             q2: document.querySelector('input[name="q2"]:checked')?.value || '',
-            q2d: document.getElementById('q2_detail').value,
+            q2d: t(document.getElementById('q2_detail').value),
             q3: document.querySelector('input[name="q3"]:checked')?.value || '',
             q4: document.querySelector('input[name="q4"]:checked')?.value || '',
             q5: document.querySelector('input[name="q5"]:checked')?.value || '',
             q6: document.querySelector('input[name="q6"]:checked')?.value || '',
             q7: document.querySelector('input[name="q7"]:checked')?.value || '',
-            q7d: document.getElementById('q7_detail').value,
+            q7d: t(document.getElementById('q7_detail').value),
             q8: document.querySelector('input[name="q8"]:checked')?.value || '',
             q9: document.querySelector('input[name="q9"]:checked')?.value || '',
-            q9d: document.getElementById('q9_detail').value,
+            q9d: t(document.getElementById('q9_detail').value),
             q10: document.querySelector('input[name="q10"]:checked')?.value || '',
             q11: document.querySelector('input[name="q11"]:checked')?.value || '',
             q12: document.querySelector('input[name="q12"]:checked')?.value || ''
