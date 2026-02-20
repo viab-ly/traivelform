@@ -225,6 +225,13 @@
                     </div>
                 </div>
 
+                <div class="form-row" style="align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <label for="qrFormat" style="font-weight: bold; white-space: nowrap;">QR-Format:</label>
+                    <select id="qrFormat" style="padding: 6px; border-radius: 4px; border: 2px solid #888;">
+                        <option value="w3fix">W3-fix (Plain JSON - alte App)</option>
+                        <option value="base64">W4 (Base64 - neue App)</option>
+                    </select>
+                </div>
                 <button type="button" id="generateQR">1. Generiere QR</button>
                 <button type="button" id="createPDF" style="background-color: orange;">2. Generiere PDF</button>
 
@@ -242,8 +249,14 @@
             </div>
         </div>
     </div>
-    <div class="version-label">W3</div>
+    <div class="version-label" id="versionLabel">W3-fix</div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="script.js"></script>
+    <script>
+        // Sync version label with QR format dropdown
+        document.getElementById('qrFormat').addEventListener('change', function() {
+            document.getElementById('versionLabel').textContent = this.value === 'base64' ? 'W4' : 'W3-fix';
+        });
+    </script>
 </body>
 </html>
